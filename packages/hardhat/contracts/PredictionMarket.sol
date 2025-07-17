@@ -114,6 +114,7 @@ contract PredictionMarket is Ownable {
         i_percentageLocked = _percentageToLock;
 
         s_ethCollateral = msg.value;
+
         /// Checkpoint 3 ////
         //calculate inital token amount;
         uint256 initialTokenAmount;
@@ -158,6 +159,20 @@ contract PredictionMarket is Ownable {
      */
     function addLiquidity() external payable onlyOwner {
         //// Checkpoint 4 ////
+        //require non zero liquidity
+        if(msg.value == 0){
+            revert PredictionMarket__AmountMustBeGreaterThanZero();
+        }
+
+        s_ethCollateral += msg.value;
+
+        //calculate additional token amount and mint yes and no tokens
+        uint256 additionalTokenAmount = (msg.value * PRECISION) / i_initialTokenValue;
+        i_yesToken.mint(address(this), additionalTokenAmount);
+        i_noToken.mint(address(this), additionalTokenAmount);
+        
+        emit LiquidityAdded(msg.sender, msg.value, additionalTokenAmount);
+
     }
 
     /**
@@ -167,6 +182,38 @@ contract PredictionMarket is Ownable {
      */
     function removeLiquidity(uint256 _ethToWithdraw) external onlyOwner {
         //// Checkpoint 4 ////
+        //require non zero withdraw amount
+        if(_ethToWithdraw == 0){
+            revert PredictionMarket__AmountMustBeGreaterThanZero();
+        }
+
+        //require withdrawl amount > collateral
+        if(_ethToWithdraw > s_ethCollateral){
+            revert PredictionMarket__InsufficientTokenReserve(Outcome.YES,_ethToWithdraw);
+        }
+        s_ethCollateral -= _ethToWithdraw;
+
+        //burn tokens       
+        uint256 burnlTokenAmount = (_ethToWithdraw * PRECISION) / i_initialTokenValue;
+
+        if(i_yesToken.balanceOf(address(this)) > i_yesToken.totalSupply()) {
+            revert PredictionMarket__InsufficientTokenReserve(Outcome.YES, burnlTokenAmount);
+        }
+
+        if(i_noToken.balanceOf(address(this)) > i_noToken.totalSupply()) {
+            revert PredictionMarket__InsufficientTokenReserve(Outcome.NO, burnlTokenAmount);
+        }
+
+        i_yesToken.burn(address(this), burnlTokenAmount);
+        i_noToken.burn(address(this), burnlTokenAmount);
+
+        //xfer withdrawn collateral to sender
+        (bool success, ) = msg.sender.call{value: _ethToWithdraw}("");
+        if(!success){
+            revert PredictionMarket__ETHTransferFailed();
+        }
+
+        emit LiquidityRemoved(msg.sender, _ethToWithdraw, burnlTokenAmount);
     }
 
     /**
@@ -301,20 +348,20 @@ contract PredictionMarket is Ownable {
         )
     {
         /// Checkpoint 3 ////
-        // oracle = i_oracle;
-        // initialTokenValue = i_initialTokenValue;
-        // percentageLocked = i_percentageLocked;
-        // initialProbability = i_initialYesProbability;
-        // question = s_question;
-        // ethCollateral = s_ethCollateral;
-        // lpTradingRevenue = s_lpTradingRevenue;
-        // predictionMarketOwner = owner();
-        // yesToken = address(i_yesToken);
-        // noToken = address(i_noToken);
-        // outcome1 = i_yesToken.name();
-        // outcome2 = i_noToken.name();
-        // yesTokenReserve = i_yesToken.balanceOf(address(this));
-        // noTokenReserve = i_noToken.balanceOf(address(this));
+        oracle = i_oracle;
+        initialTokenValue = i_initialTokenValue;
+        percentageLocked = i_percentageLocked;
+        initialProbability = i_initialYesProbability;
+        question = s_question;
+        ethCollateral = s_ethCollateral;
+        lpTradingRevenue = s_lpTradingRevenue;
+        predictionMarketOwner = owner();
+        yesToken = address(i_yesToken);
+        noToken = address(i_noToken);
+        outcome1 = i_yesToken.name();
+        outcome2 = i_noToken.name();
+        yesTokenReserve = i_yesToken.balanceOf(address(this));
+        noTokenReserve = i_noToken.balanceOf(address(this));
         /// Checkpoint 5 ////
         // isReported = s_isReported;
         // winningToken = address(s_winningToken);
