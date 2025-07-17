@@ -56,6 +56,8 @@ contract PredictionMarket is Ownable {
     PredictionMarketToken public immutable i_noToken;
 
     /// Checkpoint 5 ///
+    PredictionMarketToken public s_winningToken;
+    bool public s_isReported;
 
     /////////////////////////
     /// Events //////
@@ -74,6 +76,22 @@ contract PredictionMarket is Ownable {
     /////////////////
 
     /// Checkpoint 5 ///
+
+    //verify not reported
+    modifier predictionNotReported() {
+        if(s_isReported){
+            revert PredictionMarket__PredictionAlreadyReported();
+        }
+        _;
+    }
+
+    //ensure only oracle can call this method (report)
+    modifier onlyOracle(){
+        if(msg.sender != i_oracle){
+            revert PredictionMarket__OnlyOracleCanReport();
+        }
+        _;
+    }
 
     /// Checkpoint 6 ///
 
@@ -157,7 +175,7 @@ contract PredictionMarket is Ownable {
      * @notice Add liquidity to the prediction market and mint tokens
      * @dev Only the owner can add liquidity and only if the prediction is not reported
      */
-    function addLiquidity() external payable onlyOwner {
+    function addLiquidity() external payable onlyOwner predictionNotReported {
         //// Checkpoint 4 ////
         //require non zero liquidity
         if(msg.value == 0){
@@ -180,7 +198,7 @@ contract PredictionMarket is Ownable {
      * @dev Only the owner can remove liquidity and only if the prediction is not reported
      * @param _ethToWithdraw Amount of ETH to withdraw from liquidity pool
      */
-    function removeLiquidity(uint256 _ethToWithdraw) external onlyOwner {
+    function removeLiquidity(uint256 _ethToWithdraw) external onlyOwner predictionNotReported {
         //// Checkpoint 4 ////
         //require non zero withdraw amount
         if(_ethToWithdraw == 0){
@@ -221,10 +239,17 @@ contract PredictionMarket is Ownable {
      * @dev Only the oracle can report the winning outcome and only if the prediction is not reported
      * @param _winningOutcome The winning outcome (YES or NO)
      */
-    function report(Outcome _winningOutcome) external {
+    function report(Outcome _winningOutcome) external onlyOracle predictionNotReported {
         //// Checkpoint 5 ////
-    }
+        if(_winningOutcome == Outcome.YES){
+            s_winningToken = i_yesToken;
+        } else {
+            s_winningToken = i_noToken;
+        }
+        s_isReported = true;
 
+        emit MarketReported(msg.sender, _winningOutcome, address(s_winningToken));
+    }
     /**
      * @notice Owner of contract can redeem winning tokens held by the contract after prediction is resolved and get ETH from the contract including LP revenue and collateral back
      * @dev Only callable by the owner and only if the prediction is resolved
@@ -363,7 +388,7 @@ contract PredictionMarket is Ownable {
         yesTokenReserve = i_yesToken.balanceOf(address(this));
         noTokenReserve = i_noToken.balanceOf(address(this));
         /// Checkpoint 5 ////
-        // isReported = s_isReported;
-        // winningToken = address(s_winningToken);
+        isReported = s_isReported;
+        winningToken = address(s_winningToken);
     }
 }
