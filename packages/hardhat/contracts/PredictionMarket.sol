@@ -1,6 +1,9 @@
 //SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0 <0.9.0;
 
+//buidlguidl challenge https://speedrunethereum.com/challenge/prediction-markets
+//quantumtekh.eth
+
 import { PredictionMarketToken } from "./PredictionMarketToken.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -49,6 +52,8 @@ contract PredictionMarket is Ownable {
     uint8 public immutable i_percentageLocked; //used in probability + pricing logic
     
     /// Checkpoint 3 ///
+    PredictionMarketToken public immutable i_yesToken;
+    PredictionMarketToken public immutable i_noToken;
 
     /// Checkpoint 5 ///
 
@@ -110,6 +115,37 @@ contract PredictionMarket is Ownable {
 
         s_ethCollateral = msg.value;
         /// Checkpoint 3 ////
+        //calculate inital token amount;
+        uint256 initialTokenAmount;
+        if(_initialTokenValue == 0){
+            initialTokenAmount = type(uint256).max;
+        } else {
+            initialTokenAmount = (msg.value * PRECISION) / _initialTokenValue ;
+        }
+
+        //create yes and no contracts
+        ////note***************************************************
+        //// was referencing i_ imutable variables at first
+        //// did not work - needed to reference passed in arguments
+        ////*******************************************************
+
+        i_yesToken = new PredictionMarketToken("YesToken","YES",_liquidityProvider,initialTokenAmount);
+        i_noToken = new PredictionMarketToken("NoToken","NO",_liquidityProvider,initialTokenAmount);
+
+        //get locked token amounts 
+        //// note************************************************************************************************
+        //// originally tried: initialTokenAmount * (_initialYesProbability/100)  * (_percentageToLock/100) * 2
+        //// this returned 0
+        ////******************************************************************************************************
+        uint256 yesLocked = (initialTokenAmount * _initialYesProbability  * _percentageToLock * 2) / 10000;
+        uint256 noLocked = (initialTokenAmount * (100 - _initialYesProbability) * _percentageToLock * 2) / 10000;
+
+        //transfer locked tokens
+        bool okYesXfr = i_yesToken.transfer(msg.sender, yesLocked);
+        bool okNoXfr = i_noToken.transfer(msg.sender, noLocked);
+        if(!okYesXfr || !okNoXfr){
+            revert PredictionMarket__TokenTransferFailed();
+        }
     }
 
     /////////////////
