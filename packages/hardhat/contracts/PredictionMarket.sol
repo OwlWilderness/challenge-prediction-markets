@@ -29,6 +29,7 @@ contract PredictionMarket is Ownable {
     //////////////////////////
     /// State Variables //////
     //////////////////////////
+    
 
     enum Outcome {
         YES,
@@ -38,7 +39,15 @@ contract PredictionMarket is Ownable {
     uint256 private constant PRECISION = 1e18;
 
     /// Checkpoint 2 ///
-
+    uint256 public s_ethCollateral; //the total ETH backing the tokens
+    uint256 public s_lpTradingRevenue; //tracks the fees earned from users buying/selling tokens — the LP’s reward
+  
+    address public immutable i_oracle; //the address that will later report the outcome
+    string public s_question; //the actual prediction being asked
+    uint256 public immutable i_initialTokenValue; //the ETH value a winning token pays out 
+    uint8 public immutable i_initialYesProbability; //how likely “Yes” is at the start 
+    uint8 public immutable i_percentageLocked; //used in probability + pricing logic
+    
     /// Checkpoint 3 ///
 
     /// Checkpoint 5 ///
@@ -78,6 +87,28 @@ contract PredictionMarket is Ownable {
         uint8 _percentageToLock
     ) payable Ownable(_liquidityProvider) {
         /// Checkpoint 2 ////
+        //require initial liquidity
+        if(msg.value == 0){
+            revert PredictionMarket__MustProvideETHForInitialLiquidity();
+        }
+
+        //require init yes probabiliy between 0 and 100
+        if(_initialYesProbability == 0 || _initialYesProbability >= 100){
+            revert PredictionMarket__InvalidProbability();
+        }
+
+        //require percentage to lock 100 or less
+        if(_percentageToLock == 0 || _percentageToLock >= 100){
+            revert PredictionMarket__InvalidPercentageToLock();
+        }
+
+        i_oracle = _oracle;
+        s_question = _question;
+        i_initialTokenValue = _initialTokenValue;
+        i_initialYesProbability = _initialYesProbability;
+        i_percentageLocked = _percentageToLock;
+
+        s_ethCollateral = msg.value;
         /// Checkpoint 3 ////
     }
 
