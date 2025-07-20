@@ -94,6 +94,13 @@ contract PredictionMarket is Ownable {
     }
 
     /// Checkpoint 6 ///
+    //verify reported
+    modifier predictionReported() {
+        if(!s_isReported){
+            revert PredictionMarket__PredictionNotReported();
+        }
+        _;
+    }
 
     /// Checkpoint 8 ///
 
@@ -255,8 +262,38 @@ contract PredictionMarket is Ownable {
      * @dev Only callable by the owner and only if the prediction is resolved
      * @return ethRedeemed The amount of ETH redeemed
      */
-    function resolveMarketAndWithdraw() external onlyOwner returns (uint256 ethRedeemed) {
+    function resolveMarketAndWithdraw() external onlyOwner predictionReported returns (uint256 ethRedeemed) {
         /// Checkpoint 6 ////
+        uint256 winningTokenBalance = s_winningToken.balanceOf(address(this));
+        if(winningTokenBalance == 0){
+            revert PredictionMarket__InsufficientWinningTokens();
+        }
+
+        //calculate winning token  value
+        uint256 winningTokenValue = (winningTokenBalance * i_initialTokenValue) / PRECISION ;
+        if(winningTokenValue > s_ethCollateral){
+            ethRedeemed = s_ethCollateral;
+        } else {
+            ethRedeemed = winningTokenValue;
+        }
+        s_ethCollateral -= ethRedeemed;
+
+        //caclulate tokal eth to send
+        uint256 totalEthToSend = ethRedeemed + s_lpTradingRevenue;
+
+        //burn winning tokens
+        s_winningToken.burn(address(this), winningTokenBalance);
+
+        //reset state variables 
+        s_ethCollateral = 0;
+        s_lpTradingRevenue = 0;
+
+        //xfer eth to sender
+        (bool success, ) = msg.sender.call{value: totalEthToSend}("");
+        if(!success){
+            revert PredictionMarket__ETHTransferFailed();
+        }
+        emit MarketResolved(msg.sender, totalEthToSend);
     }
 
     /**
