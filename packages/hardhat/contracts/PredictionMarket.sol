@@ -294,6 +294,8 @@ contract PredictionMarket is Ownable {
             revert PredictionMarket__ETHTransferFailed();
         }
         emit MarketResolved(msg.sender, totalEthToSend);
+
+        return ethRedeemed;
     }
 
     /**
@@ -303,6 +305,7 @@ contract PredictionMarket is Ownable {
      */
     function buyTokensWithETH(Outcome _outcome, uint256 _amountTokenToBuy) external payable {
         /// Checkpoint 8 ////
+        
     }
 
     /**
@@ -331,6 +334,7 @@ contract PredictionMarket is Ownable {
      */
     function getBuyPriceInEth(Outcome _outcome, uint256 _tradingAmount) public view returns (uint256) {
         /// Checkpoint 7 ////
+        return _calculatePriceInEth(_outcome, _tradingAmount, false);
     }
 
     /**
@@ -341,6 +345,7 @@ contract PredictionMarket is Ownable {
      */
     function getSellPriceInEth(Outcome _outcome, uint256 _tradingAmount) public view returns (uint256) {
         /// Checkpoint 7 ////
+        return _calculatePriceInEth(_outcome, _tradingAmount, true);    
     }
 
     /////////////////////////
@@ -359,15 +364,52 @@ contract PredictionMarket is Ownable {
         bool _isSelling
     ) private view returns (uint256) {
         /// Checkpoint 7 ////
+
+        //get reserves
+        (uint256 token1Reserves, uint256 token2Reserves) = _getCurrentReserves(_outcome);
+        //validate
+        if(!_isSelling && _tradingAmount > token1Reserves){
+            revert PredictionMarket__InsufficientLiquidity();
+        }
+
+        uint256 supply = i_yesToken.totalSupply();
+        
+        //probabilty before
+        uint256 before1Sold = supply - token1Reserves;
+        uint256 before2Sold = supply - token2Reserves;
+        uint256 totalBefore = before1Sold + before2Sold;
+        uint256 probabilityBefore = _calculateProbability(before1Sold, totalBefore);
+
+        //probability after
+        uint256 afterReserve = _isSelling ? token1Reserves + _tradingAmount : token1Reserves - _tradingAmount;
+        uint256 after1Sold = supply - afterReserve;
+        uint256 totalAfter = _isSelling ? totalBefore - _tradingAmount : totalBefore + _tradingAmount;
+        uint256 probabilityAfter = _calculateProbability(after1Sold, totalAfter);
+
+        //calculate avg
+        uint256 probabilityAvg = (probabilityBefore + probabilityAfter) / 2;
+
+        //aclulate price
+        uint256 price = (i_initialTokenValue * probabilityAvg * _tradingAmount) / (PRECISION * PRECISION);
+
+        return price;
+
     }
 
     /**
      * @dev Internal helper to get the current reserves of the tokens
      * @param _outcome The possible outcome (YES or NO)
-     * @return The current reserves of the tokens
+     * @return The current reserves of the tokens in order starting with _outcome
      */
     function _getCurrentReserves(Outcome _outcome) private view returns (uint256, uint256) {
         /// Checkpoint 7 ////
+        uint256 yesReserves = i_yesToken.balanceOf(address(this));
+        uint256 noReserves = i_noToken.balanceOf(address(this));
+        if(_outcome == Outcome.YES){
+            return (yesReserves, noReserves);
+        } else {
+            return (noReserves, yesReserves);
+        }
     }
 
     /**
@@ -378,6 +420,7 @@ contract PredictionMarket is Ownable {
      */
     function _calculateProbability(uint256 tokensSold, uint256 totalSold) private pure returns (uint256) {
         /// Checkpoint 7 ////
+        return (tokensSold * PRECISION / totalSold) ;
     }
 
     /////////////////////////
