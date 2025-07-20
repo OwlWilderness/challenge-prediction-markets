@@ -103,7 +103,19 @@ contract PredictionMarket is Ownable {
     }
 
     /// Checkpoint 8 ///
+    modifier amtGreaterThanZero(uint256 _amount){
+        if(_amount == 0){
+            revert PredictionMarket__AmountMustBeGreaterThanZero();
+        }
+        _;
+    }
 
+    modifier verifyNotOwner(){
+        if(msg.sender == owner()){
+            revert PredictionMarket__OwnerCannotCall();
+        }
+        _;
+    }
     //////////////////
     ////Constructor///
     //////////////////
@@ -303,9 +315,37 @@ contract PredictionMarket is Ownable {
      * @param _outcome The possible outcome (YES or NO) to buy tokens for
      * @param _amountTokenToBuy Amount of tokens to purchase
      */
-    function buyTokensWithETH(Outcome _outcome, uint256 _amountTokenToBuy) external payable {
+    function buyTokensWithETH(Outcome _outcome, uint256 _amountTokenToBuy) external predictionNotReported amtGreaterThanZero(_amountTokenToBuy) verifyNotOwner payable {
         /// Checkpoint 8 ////
+
+        //validate sent eth equals required eth
+        uint256 ethPrice = getBuyPriceInEth(_outcome, _amountTokenToBuy);
+        if(ethPrice != msg.value){
+            revert PredictionMarket__MustSendExactETHAmount();
+        }
+
+        //get token reserves
+        (uint256 yesReserves, uint256 noReserves) = _getCurrentReserves(Outcome.YES);
+
+        //validate enough tokens to sell
+        uint256 checkReserves = _outcome == Outcome.YES ? yesReserves : noReserves;
+        if(_amountTokenToBuy > checkReserves){
+            revert PredictionMarket__InsufficientTokenReserve(_outcome, _amountTokenToBuy);
+        }
+
+        //update trading revenue
+        s_lpTradingRevenue += ethPrice;
+
+        //xfr tokens
+        bool okXfr = _outcome == Outcome.YES ? i_yesToken.transfer(msg.sender, _amountTokenToBuy) : i_noToken.transfer(msg.sender, _amountTokenToBuy);
+
+        //validate xfer
+        if(!okXfr){
+            revert PredictionMarket__TokenTransferFailed();
+        }
         
+        emit TokensPurchased(msg.sender, _outcome, _amountTokenToBuy, ethPrice);
+
     }
 
     /**
@@ -313,8 +353,40 @@ contract PredictionMarket is Ownable {
      * @param _outcome The possible outcome (YES or NO) to sell tokens for
      * @param _tradingAmount The amount of tokens to sell
      */
-    function sellTokensForEth(Outcome _outcome, uint256 _tradingAmount) external {
+    function sellTokensForEth(Outcome _outcome, uint256 _tradingAmount) external predictionNotReported amtGreaterThanZero(_tradingAmount) verifyNotOwner  {
         /// Checkpoint 8 ////
+        //verify user balance
+        uint256 userBalance = _outcome == Outcome.YES ? i_yesToken.balanceOf(msg.sender) : i_noToken.balanceOf(msg.sender) ;
+        
+        if(_tradingAmount > userBalance){              
+            revert PredictionMarket__InsufficientBalance(_tradingAmount, userBalance);
+        }
+
+        //get sell price and validate amount
+        uint256 ethPrice = getSellPriceInEth(_outcome, _tradingAmount);
+
+        uint256 allowanceAmt = _outcome == Outcome.YES ? i_yesToken.allowance(msg.sender, address(this)) : i_noToken.allowance(msg.sender, address(this));
+        if(_tradingAmount > allowanceAmt){
+            revert PredictionMarket__InsufficientAllowance(_tradingAmount, allowanceAmt);
+        }
+
+        //xfr tokens
+        bool okXfr = _outcome == Outcome.YES ? i_yesToken.transferFrom(msg.sender, address(this), _tradingAmount) : i_noToken.transfer(address(this), _tradingAmount);
+
+        //validate xfer
+        if(!okXfr){
+            revert PredictionMarket__TokenTransferFailed();
+        }
+
+        s_lpTradingRevenue -= ethPrice;
+
+        //xfer eth to sender
+        (bool success, ) = msg.sender.call{value: ethPrice}("");
+        if(!success){
+            revert PredictionMarket__ETHTransferFailed();
+        }
+
+        emit TokensSold(msg.sender, _outcome, _tradingAmount, ethPrice);
     }
 
     /**
