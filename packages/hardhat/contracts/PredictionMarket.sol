@@ -2,7 +2,7 @@
 pragma solidity >=0.8.0 <0.9.0;
 
 //buidlguidl challenge https://speedrunethereum.com/challenge/prediction-markets
-//quantumtekh.eth
+//quantumtekh.eth 0x1A4c2B35c9B4CC9F9A833A43dBe3A78FDB80Bb54
 
 import { PredictionMarketToken } from "./PredictionMarketToken.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
@@ -394,8 +394,26 @@ contract PredictionMarket is Ownable {
      * @dev Only if the prediction is resolved
      * @param _amount The amount of winning tokens to redeem
      */
-    function redeemWinningTokens(uint256 _amount) external {
+    function redeemWinningTokens(uint256 _amount) external predictionReported verifyNotOwner amtGreaterThanZero(_amount){
         /// Checkpoint 9 ////
+        if(s_winningToken.balanceOf(msg.sender) == 0){
+            revert PredictionMarket__InsufficientWinningTokens();
+        }
+
+        //get eth amount
+        uint256 ethAmount = (_amount * i_initialTokenValue) / PRECISION;
+        s_ethCollateral -= ethAmount;
+
+        //burn tokens
+        s_winningToken.burn(msg.sender, _amount);
+
+        //xfer eth to sender
+        (bool success, ) = msg.sender.call{value: ethAmount}("");
+        if(!success){
+            revert PredictionMarket__ETHTransferFailed();
+        }
+
+        emit WinningTokensRedeemed(msg.sender, _amount, ethAmount);
     }
 
     /**
